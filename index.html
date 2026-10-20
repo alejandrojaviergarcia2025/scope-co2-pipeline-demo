@@ -1,0 +1,1353 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>SCOPE CO2 Pipeline Demo</title>
+<style>
+/* Layout: one simulated application window, full-bleed. Title bar -> warning banner -> tab strip
+   -> tool page (toolbar, results grid, status bar). A second floating "window" (the fit-plot
+   modal) mimics the real tkinter Toplevel the actual prototype (scripts/gui_demo.py) opens.
+   This page is intentionally light-only (requested explicitly): every token is defined once on
+   bare :root and never overridden for dark, so the page looks the same regardless of the
+   viewer's system theme. */
+:root {
+  --surface: #fbfbfb;
+  --surface-2: #f3f3f3;
+  --surface-3: #ececec;
+  --border: #e1e1e1;
+  --border-strong: #c7c7c7;
+  --fg: #1b1b1b;
+  --fg-muted: #5f6368;
+  --fg-faint: #8a8d91;
+  --accent: #0f6e77;
+  --accent-contrast: #ffffff;
+  --accent-sample: #0f6e77;
+  --accent-ref: #b4740a;
+  --accent-fine: #0f6e77;
+  --accent-broad: #ab4a2f;
+  --species-nox: #b2401f;
+  --species-sox: #8a7a00;
+  --species-o2: #2f5fa8;
+  --species-h2o: #6a3d9a;
+  --ok: #1f8a53;
+  --warn: #b4740a;
+  --bad: #c23b3b;
+  --row-hover: #0f6e770f;
+  --row-selected: #0f6e7724;
+  --banner-bg: #8a4b00;
+  --banner-fg: #ffffff;
+  --shadow: 0 1px 2px #00000014, 0 8px 28px #00000022;
+  --font: "Segoe UI", "Segoe UI Variable", system-ui, -apple-system, sans-serif;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--surface-3); color: var(--fg); font-family: var(--font); font-size: 13px; }
+
+.app-window {
+  max-width: 980px; margin: 0 auto; background: var(--surface); min-height: 100vh;
+  display: flex; flex-direction: column; border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+}
+@media (min-width: 640px) {
+  .app-window { min-height: calc(100vh - 32px); margin-top: 16px; margin-bottom: 16px; border-radius: 8px; border: 1px solid var(--border); box-shadow: var(--shadow); overflow: hidden; }
+}
+
+.title-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--surface-2); border-bottom: 1px solid var(--border); padding: 0 0 0 12px; height: 38px; flex: none;
+}
+.title-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.app-icon {
+  width: 17px; height: 17px; flex: none; border-radius: 3px;
+  background-image: url('brand/scope-co2-logo.png'); background-repeat: no-repeat;
+  background-size: 56.4px 48.8px; background-position: -6px -5.9px;
+}
+.title-text { font-size: 12.5px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.title-right { display: flex; height: 100%; }
+.win-btn {
+  width: 42px; height: 38px; display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; color: var(--fg-muted); font-size: 11px; font-family: var(--font); cursor: default;
+}
+button.win-btn { cursor: pointer; }
+button.win-btn:hover { background: var(--surface-3); color: var(--fg); }
+button.win-btn.win-close:hover { background: #e81123; color: white; }
+
+.prototype-banner {
+  background: var(--banner-bg); color: var(--banner-fg); font-size: 12px; padding: 7px 12px; flex: none;
+}
+.prototype-banner code { background: #ffffff26; padding: 1px 4px; border-radius: 3px; }
+
+.app-body { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+
+.tab-strip { display: flex; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--border); flex: none; }
+.apptab {
+  font-family: var(--font); font-size: 12.5px; color: var(--fg-muted); background: transparent; border: none;
+  padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.apptab:hover { color: var(--fg); background: var(--row-hover); }
+.apptab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+
+.tab-page { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar-label { color: var(--fg-muted); font-size: 12.5px; flex: none; }
+.path-field {
+  flex: 1 1 220px; min-width: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px;
+  padding: 5px 9px; font-size: 12.5px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.path-field.filled { color: var(--fg); }
+.browse-wrap { position: relative; flex: none; }
+.native-btn {
+  font-family: var(--font); font-size: 12.5px; color: var(--fg); background: var(--surface-2);
+  border: 1px solid var(--border-strong); border-radius: 4px; padding: 6px 14px; cursor: pointer;
+}
+.native-btn:hover:not(:disabled) { background: var(--surface-3); }
+.native-btn:active:not(:disabled) { background: var(--row-selected); }
+.native-btn:disabled { color: var(--fg-faint); cursor: not-allowed; opacity: 0.6; }
+.native-btn.primary:not(:disabled) { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.native-btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+.native-btn.small { padding: 4px 10px; font-size: 11.5px; }
+.native-btn.loaded:not(:disabled) { background: var(--ok); color: #fff; border-color: var(--ok); }
+.native-input.loaded { border-color: var(--ok); color: var(--ok); font-weight: 600; }
+
+.native-input {
+  font-family: var(--font); font-size: 12.5px; color: var(--fg); background: var(--surface-2);
+  border: 1px solid var(--border-strong); border-radius: 4px; padding: 5px 8px; width: 100%;
+}
+.native-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.browse-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; min-width: 260px; background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: var(--shadow); z-index: 5; padding: 4px;
+}
+.browse-menu .menu-item { padding: 7px 10px; border-radius: 4px; cursor: pointer; font-size: 12.5px; }
+.browse-menu .menu-item:hover { background: var(--row-hover); }
+.browse-menu .menu-item .fname { color: var(--fg); }
+.browse-menu .menu-item .fdesc { color: var(--fg-faint); font-size: 11px; margin-top: 1px; }
+
+table.treeview { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+table.treeview thead th {
+  text-align: left; font-weight: 600; color: var(--fg-muted); background: var(--surface-2);
+  border: 1px solid var(--border); padding: 6px 10px; font-size: 12px;
+}
+table.treeview tbody td { padding: 6px 10px; border: 1px solid var(--border); color: var(--fg); }
+table.treeview tbody tr { cursor: pointer; }
+table.treeview tbody tr:hover td { background: var(--row-hover); }
+table.treeview tbody tr.selected td { background: var(--row-selected); }
+table.treeview td.num { font-variant-numeric: tabular-nums; }
+table.treeview .status-ok { color: var(--ok); }
+table.treeview .status-muted { color: var(--fg-muted); }
+table.treeview tbody.empty td { color: var(--fg-faint); text-align: center; padding: 18px; border-style: dashed; }
+
+.bottom-bar { display: flex; align-items: center; gap: 12px; }
+.status-text { color: var(--fg-muted); font-size: 12px; }
+.status-text.is-error { color: var(--bad); }
+
+/* ---- calibration tab ---- */
+.calib-note { font-size: 12.5px; color: var(--fg-muted); max-width: 72ch; line-height: 1.5; }
+.calib-note b { color: var(--fg); }
+.calib-badge {
+  font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn);
+  border: 1px solid var(--warn); border-radius: 3px; padding: 2px 6px; margin-left: 8px; vertical-align: 1px;
+}
+.groupbox { border: 1px solid var(--border); border-radius: 6px; padding: 14px; position: relative; margin-top: 10px; }
+.groupbox .groupbox-label {
+  position: absolute; top: -9px; left: 10px; background: var(--surface); padding: 0 6px; font-size: 11.5px; color: var(--fg-muted);
+}
+.groupbox.section-gap { margin-top: 34px; }
+.calib-grid-wrap { overflow-x: auto; margin-top: 4px; }
+table.calib { border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+table.calib th, table.calib td { padding: 8px 12px; text-align: center; white-space: nowrap; border: 1px solid var(--border); }
+table.calib th { color: var(--fg-muted); font-weight: 600; font-size: 11.5px; background: var(--surface-2); }
+table.calib td.p-label { color: var(--fg-muted); text-align: left; font-size: 11.5px; background: var(--surface-2); font-weight: 600; }
+table.calib td.cell { font-weight: 700; position: relative; color: #10120f; text-shadow: 0 0 1px #fff, 0 0 5px #ffffffb0; }
+table.calib td.cell.near-critical::after { content: "\26A0"; position: absolute; top: 1px; right: 3px; font-size: 9px; }
+.calib-curve-note { font-size: 11.5px; color: var(--fg-faint); margin-top: 2px; }
+
+/* ---- pure-spectra tab ---- */
+.bandmap-wrap { margin-top: 10px; }
+.bandmap-title { font-size: 11px; color: var(--fg-muted); margin-bottom: 3px; }
+.bandmap-wrap svg.chart { height: 156px; }
+.pure-chart-wrap { position: relative; margin-top: 10px; }
+.pure-chart-wrap svg.chart { height: 380px; cursor: grab; background: #fff; border: 1px solid var(--border); border-radius: 6px; }
+.pure-chart-wrap svg.chart:active { cursor: grabbing; }
+.legend.toggleable span { cursor: pointer; user-select: none; }
+.legend.toggleable span.off { color: var(--fg-faint); text-decoration: line-through; }
+.legend.toggleable span.off .swatch { opacity: 0.25; }
+.zoom-hint { font-size: 11px; color: var(--fg-faint); }
+
+.pure-species-panel { border: 1px solid var(--border); border-radius: 6px; }
+.pure-species-row {
+  display: grid; grid-template-columns: 18px 1fr 112px 78px 72px 72px 60px; gap: 10px; align-items: center;
+  padding: 8px 10px; border-bottom: 1px solid var(--border);
+}
+.pure-species-row .sp-browse-wrap { position: relative; }
+.pure-species-row .sp-browse-wrap .native-btn { width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pure-species-row:last-child { border-bottom: none; }
+.pure-species-row .swatch-dot { width: 11px; height: 11px; border-radius: 50%; }
+.pure-species-row .sp-name { font-weight: 600; color: var(--fg); font-size: 12.5px; }
+.pure-species-row .sp-range { font-size: 11px; color: var(--fg-faint); display: block; margin-top: 1px; }
+.pure-species-row .field-wrap { display: flex; flex-direction: column; gap: 1px; font-size: 10.5px; color: var(--fg-faint); }
+.pure-species-row .field-wrap input { width: 100%; text-align: right; }
+.pure-species-row .scale-readout { font-size: 11px; color: var(--fg-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pure-species-row.is-off { opacity: 0.55; }
+.pure-species-head {
+  display: grid; grid-template-columns: 18px 1fr 112px 78px 72px 72px 60px; gap: 10px;
+  padding: 6px 10px; background: var(--surface-2); border-bottom: 1px solid var(--border);
+  font-size: 10.5px; color: var(--fg-faint); text-transform: uppercase; letter-spacing: 0.03em;
+}
+@media (max-width: 560px) {
+  .pure-species-head { display: none; }
+}
+
+/* ---- fit-plot modal (mimics the tkinter Toplevel) ---- */
+.modal-overlay {
+  position: fixed; inset: 0; background: #00000055; display: flex; align-items: center; justify-content: center;
+  padding: 24px; z-index: 20;
+}
+.modal-overlay[hidden] { display: none; }
+.modal-window {
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow);
+  width: min(880px, 100%); max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
+}
+.modal-body { padding: 14px 18px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.plot-caption { font-size: 12px; color: var(--fg-muted); line-height: 1.5; }
+.chart-block { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.chart-block .chart-title { font-size: 11.5px; color: var(--fg-muted); font-weight: 600; }
+svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
+svg.chart text { fill: var(--fg-muted); font-family: var(--font); font-size: 10px; }
+svg.chart .tick line { stroke: var(--border); stroke-dasharray: 2 2; }
+svg.chart .zero-line { stroke: var(--fg-faint); stroke-width: 1; }
+.chart-wrap { position: relative; }
+.chart-tooltip {
+  position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 6px; padding: 6px 9px; font-size: 11px; line-height: 1.5; font-variant-numeric: tabular-nums;
+  box-shadow: var(--shadow); opacity: 0; transition: opacity 0.08s; white-space: nowrap; z-index: 2;
+}
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--fg-muted); }
+.legend span.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+/* ---- startup splash ---- */
+.logo-splash {
+  position: fixed; inset: 0; background: #f4f5fa; z-index: 50;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: opacity 0.4s ease, visibility 0s linear 0s;
+}
+.logo-splash.hide { opacity: 0; visibility: hidden; transition: opacity 0.4s ease, visibility 0s linear 0.4s; }
+.splash-logo {
+  width: 460px; height: 211px; max-width: 100%;
+  background-image: url('brand/scope-co2-logo.png'); background-repeat: no-repeat;
+  background-size: 506.4px 439px; background-position: -23.2px -22.2px;
+}
+@media (max-width: 560px) {
+  .tab-page { padding: 12px; }
+  .title-text { font-size: 11.5px; }
+  .modal-overlay { padding: 0; }
+  .modal-window { width: 100%; height: 100%; max-height: 100%; border-radius: 0; }
+  .splash-logo { width: 300px; height: 137.6px; background-size: 330.3px 286.3px; background-position: -15.1px -14.5px; }
+  .pure-species-row { grid-template-columns: 16px 1fr 1fr; row-gap: 6px; }
+  .pure-species-row .field-wrap, .pure-species-row .scale-readout, .pure-species-row .sp-browse-wrap { grid-column: 1 / -1; }
+}
+</style>
+
+<div class="logo-splash" id="logoSplash"><div class="splash-logo" role="img" aria-label="SCOPE CO2 -- spectroscopic CO2 pipeline evaluation"></div></div>
+
+<div class="app-window" id="appWindow">
+  <div class="title-bar">
+    <div class="title-left">
+      <span class="app-icon" aria-hidden="true"></span>
+      <span class="title-text">SCOPE CO2 -- prototype viewer (not the production interface)</span>
+    </div>
+    <div class="title-right">
+      <button class="win-btn win-min" id="minBtn" title="Minimize" aria-label="Minimize">&#x2013;</button>
+      <span class="win-btn win-max" aria-hidden="true">&#x25A1;</span>
+      <span class="win-btn win-close" aria-hidden="true">&#x2715;</span>
+    </div>
+  </div>
+  <div class="prototype-banner">PROTOTYPE</div>
+
+  <div class="app-body" id="appBody">
+    <div class="tab-strip">
+      <button class="apptab active" data-tab="purespectra">Pure spectra</button>
+      <button class="apptab" data-tab="analyze">Analyze spectra</button>
+      <button class="apptab" data-tab="ir">IR / humidity</button>
+    </div>
+
+    <div class="tab-page" id="page-analyze" hidden>
+      <div class="toolbar">
+        <span class="toolbar-label">Config file:</span>
+        <span class="path-field" id="pathField">(none selected)</span>
+        <div class="browse-wrap">
+          <button class="native-btn" id="browseBtn">Browse...</button>
+          <div class="browse-menu" id="browseMenu" hidden></div>
+        </div>
+        <button class="native-btn primary" id="runBtn" disabled>Run analysis</button>
+      </div>
+
+      <table class="treeview">
+        <thead>
+          <tr><th>File</th><th>Species</th><th class="num">ppm (raw)</th><th class="num">ppm (calibrated)</th><th>Status</th></tr>
+        </thead>
+        <tbody id="resultsBody">
+          <tr class="empty"><td colspan="5">Pick a file with "Browse..." and run the analysis.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="bottom-bar">
+        <button class="native-btn" id="plotBtn" disabled>View fit plot</button>
+        <span class="status-text" id="statusText"></span>
+      </div>
+
+      <div class="groupbox section-gap">
+        <span class="groupbox-label">Combine into sample</span>
+        <div class="toolbar">
+          <span class="toolbar-label">UV-Vis result:</span>
+          <select class="native-input" id="combineUvSelect" style="max-width:260px"></select>
+          <span class="toolbar-label">IR reading:</span>
+          <select class="native-input" id="combineIrSelect" style="max-width:220px"></select>
+          <button class="native-btn primary" id="combineBtn" disabled>Combine into sample</button>
+        </div>
+        <table class="treeview">
+          <thead>
+            <tr><th>UV-Vis species (ppm)</th><th class="num">H2O (ppm)</th><th>UV-Vis time</th><th>IR time</th><th>Plot</th></tr>
+          </thead>
+          <tbody id="combinedBody">
+            <tr class="empty"><td colspan="5">No combined samples yet -- analyze a spectrum and take an IR reading, then combine them above.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-page" id="page-ir" hidden>
+      <div class="toolbar">
+        <span class="toolbar-label">Detector gain (manual dial, not software-readable):</span>
+        <input class="native-input" type="number" id="irGainInput" value="40" step="1" style="width:70px">
+        <span class="cond-hint">dB</span>
+        <button class="native-btn primary" id="irReadBtn">Read voltage</button>
+      </div>
+      <table class="treeview">
+        <thead>
+          <tr><th>Time</th><th class="num">Voltage (V)</th><th class="num">Gain (dB)</th><th class="num">H2O (ppm, illustrative)</th></tr>
+        </thead>
+        <tbody id="irReadingsBody">
+          <tr class="empty"><td colspan="4">No readings yet -- click "Read voltage".</td></tr>
+        </tbody>
+      </table>
+
+      <div class="groupbox">
+        <span class="groupbox-label">H2O (ppm) by reading, over time</span>
+        <svg class="chart" id="chart-ir-trend" viewBox="0 0 820 160"></svg>
+      </div>
+      <div class="toolbar">
+        <button class="native-btn" id="irSaveBtn">Save image...</button>
+        <span class="status-text" id="irStatusText"></span>
+      </div>
+    </div>
+
+    <div class="tab-page" id="page-purespectra">
+      <div class="pure-species-panel" id="pureSpeciesPanel"></div>
+
+      <div class="bandmap-wrap">
+        <div class="bandmap-title">
+          Where the real target gases are expected to absorb (literature), across the AvaSpec's full
+          200&ndash;871.5&nbsp;nm range. Ranges are provisional.
+        </div>
+        <svg class="chart bandmap-chart" id="chart-bandmap" viewBox="0 0 820 156"></svg>
+      </div>
+
+      <div class="pure-chart-wrap">
+        <svg class="chart" id="chart-pure" viewBox="0 0 820 380"></svg>
+        <div class="chart-tooltip" id="pureTooltip"></div>
+      </div>
+      <div class="legend toggleable" id="pure-legend"></div>
+      <div class="toolbar">
+        <button class="native-btn" id="pureResetZoomBtn">Reset zoom</button>
+        <button class="native-btn" id="pureSaveBtn">Save image...</button>
+        <span class="status-text" id="pureStatusText"></span>
+        <span class="zoom-hint">Scroll to zoom, drag to pan, double-click or "Reset zoom" to go back.</span>
+      </div>
+
+      <div class="groupbox">
+        <span class="groupbox-label">Correction factor by temperature (one point per loaded gas)</span>
+        <svg class="chart" id="chart-calib-scatter" viewBox="0 0 820 160"></svg>
+        <div class="legend" id="calib-scatter-legend"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="plotOverlay" hidden>
+  <div class="modal-window">
+    <div class="title-bar">
+      <div class="title-left"><span class="title-text" id="plotTitle">Fit plot</span></div>
+      <div class="title-right"><button class="win-btn win-close" id="closePlotBtn" aria-label="Close">&#x2715;</button></div>
+    </div>
+    <div class="modal-body">
+      <p class="plot-caption" id="plotCaption"></p>
+
+      <div class="chart-block">
+        <div class="chart-title">Full detector -- reference, sample and dark (ADC counts), fit window shaded</div>
+        <svg class="chart" id="chart-overview" viewBox="0 0 820 150"></svg>
+        <div class="legend">
+          <span><span class="swatch" style="background:var(--accent-ref)"></span>reference (no gas)</span>
+          <span><span class="swatch" style="background:var(--accent-sample)"></span>sample (with gas)</span>
+          <span><span class="swatch" style="background:var(--fg-faint)"></span>dark</span>
+        </div>
+      </div>
+
+      <div class="chart-block">
+        <div class="chart-title">Measured optical density vs. fitted model</div>
+        <div class="chart-wrap">
+          <svg class="chart" id="chart-od" viewBox="0 0 820 170"></svg>
+          <div class="chart-tooltip" id="tooltip"></div>
+        </div>
+        <div class="legend">
+          <span><span class="swatch" style="background:var(--fg-muted)"></span>measured OD (raw, from the spectrum)</span>
+          <span><span class="swatch" style="background:var(--accent)"></span>fitted model (the deconvolution result)</span>
+        </div>
+      </div>
+
+      <div class="chart-block">
+        <div class="chart-title">Residual (measured - model)</div>
+        <svg class="chart" id="chart-residual" viewBox="0 0 820 85"></svg>
+      </div>
+
+      <div class="chart-block">
+        <div class="chart-title">Differential contribution by species</div>
+        <svg class="chart" id="chart-contrib" viewBox="0 0 820 115"></svg>
+        <div class="legend" id="contrib-legend"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var state = { runs: [], pendingRun: null, loadedRuns: [], selectedRow: null };
+  // Two independent histories, same spirit as daq_io.py vs spectral_io.py never sharing a clock:
+  // each UV-Vis analysis and each IR reading gets its own local timestamp, and nothing pairs them
+  // up automatically -- "Combine into sample" (below) is the one deliberate, manual step that does.
+  var analyzedHistory = []; // { id, run, analyzedAt }
+  var irReadings = []; // { id, voltage, gainDb, ppmH2O, readAt }
+  var combinedSamples = []; // { id, uv, ir }
+  var uidCounter = 0;
+  function nextUid() { return ++uidCounter; }
+  function fmtTime(d) { return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  // "Save image..." needs the downloads capability, which resolves asynchronously and may never
+  // resolve in a view that doesn't grant it -- the button works once this settles, and reports
+  // "not available here" if it settles to null.
+  var downloadsCapability = null;
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("downloads").then(function (d) { downloadsCapability = d; });
+  }
+
+  function setPureStatus(text, isError) {
+    var el = document.getElementById("pureStatusText");
+    el.textContent = text;
+    el.classList.toggle("is-error", !!isError);
+  }
+
+  // ---------------- tabs ----------------
+  document.querySelectorAll(".apptab").forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      document.querySelectorAll(".apptab").forEach(function (t) { t.classList.toggle("active", t === tab); });
+      document.getElementById("page-analyze").hidden = tab.dataset.tab !== "analyze";
+      document.getElementById("page-purespectra").hidden = tab.dataset.tab !== "purespectra";
+      document.getElementById("page-ir").hidden = tab.dataset.tab !== "ir";
+    });
+  });
+
+  // ---------------- title-bar minimize (the only functional window-control button) ----------------
+  var minimized = false;
+  document.getElementById("minBtn").addEventListener("click", function () {
+    minimized = !minimized;
+    document.getElementById("appBody").style.display = minimized ? "none" : "";
+  });
+
+  // ---------------- startup splash ----------------
+  var SPLASH_MS = 1100;
+  var splash = document.getElementById("logoSplash");
+  function hideSplash() { splash.classList.add("hide"); }
+  splash.addEventListener("click", hideSplash);
+  setTimeout(hideSplash, SPLASH_MS);
+
+  // ---------------- data load ----------------
+  fetch("data.json").then(function (r) { return r.json(); }).then(function (json) {
+    state.runs = json.runs;
+    buildBrowseMenu();
+    // Starts already "browsed and run" on the first file, like a tool opened in a working
+    // state, rather than an empty shell (see pickFile/runAnalysis below).
+    pickFile(state.runs[0]);
+    runAnalysis(state.runs[0]);
+    // Pure spectra's "Browse..." menus list state.runs too, so they must build only after the
+    // fetch above resolves -- building them any earlier left every menu showing just "None".
+    initPureTab();
+    renderIrTrend();
+  }).catch(function (err) {
+    setStatus("error: could not load data.json (" + err + ")", true);
+  });
+
+  function buildBrowseMenu() {
+    var menu = document.getElementById("browseMenu");
+    menu.innerHTML = "";
+    state.runs.forEach(function (run) {
+      var item = document.createElement("div");
+      item.className = "menu-item";
+      item.innerHTML = '<div class="fname">' + run.file_name + '</div><div class="fdesc">' + run.label + "</div>";
+      item.addEventListener("click", function () { pickFile(run); });
+      menu.appendChild(item);
+    });
+  }
+
+  var browseBtn = document.getElementById("browseBtn");
+  var browseMenu = document.getElementById("browseMenu");
+  browseBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    browseMenu.hidden = !browseMenu.hidden;
+  });
+  document.addEventListener("click", function () { browseMenu.hidden = true; });
+
+  function pickFile(run) {
+    state.pendingRun = run;
+    var field = document.getElementById("pathField");
+    field.textContent = "demo_out/input/" + run.file_name;
+    field.classList.add("filled");
+    document.getElementById("runBtn").disabled = false;
+    browseMenu.hidden = true;
+    setStatus('Ready to analyze "' + run.file_name + '".');
+  }
+
+  // ---------------- run analysis ----------------
+  document.getElementById("runBtn").addEventListener("click", function () {
+    if (!state.pendingRun) return;
+    runAnalysis(state.pendingRun);
+  });
+
+  function runAnalysis(run) {
+    state.loadedRuns = [run];
+    var body = document.getElementById("resultsBody");
+    body.innerHTML = "";
+    body.className = "";
+    Object.keys(run.species).forEach(function (name, idx) {
+      var s = run.species[name];
+      var tr = document.createElement("tr");
+      tr.dataset.runId = run.run_id;
+      var statusHtml = s.calibrated
+        ? '<span class="status-ok">calibrated</span>'
+        : '<span class="status-muted">UNCALIBRATED (raw ppm)</span>';
+      tr.innerHTML =
+        "<td>" + run.file_name + "</td>" +
+        "<td>" + name + "</td>" +
+        '<td class="num">' + s.ppm_raw.toFixed(4) + "</td>" +
+        '<td class="num">' + (s.ppm_calibrated === null ? "-" : s.ppm_calibrated.toFixed(4)) + "</td>" +
+        "<td>" + statusHtml + "</td>";
+      tr.addEventListener("click", function () { selectRow(tr, run); });
+      body.appendChild(tr);
+      // Select the first row by default so "View fit plot" is already usable right after
+      // "Run analysis" -- previously it stayed disabled until the user clicked a row by hand,
+      // which looked like the button was broken.
+      if (idx === 0) selectRow(tr, run);
+    });
+    var speciesCount = Object.keys(run.species).length;
+    setStatus("1 file(s) analyzed, " + speciesCount + " result row(s).");
+
+    // Its own entry in the UV-Vis history, timestamped now -- independent of the IR side, and not
+    // linked to anything until "Combine into sample" explicitly does it.
+    analyzedHistory.push({ id: nextUid(), run: run, analyzedAt: new Date() });
+    refreshCombineControls();
+  }
+
+  function selectRow(tr, run) {
+    document.querySelectorAll("table.treeview tbody tr").forEach(function (row) { row.classList.remove("selected"); });
+    tr.classList.add("selected");
+    state.selectedRow = run;
+    document.getElementById("plotBtn").disabled = false;
+  }
+
+  // ---------------- IR / humidity tab: a single voltage reading, not a file -----------------
+  // Mimics daq_io.py's real open -> configure -> read -> close sequence against the Analog
+  // Discovery 3, confirmed working 2026-10-19 (see CLAUDE.md). gain_db is a manual knob on the
+  // PDA10CS-EC itself, not software-readable, so the operator types it in -- same open item noted
+  // in CLAUDE.md ("where gain_db gets recorded... no pipeline stage persists it yet").
+  function illustrativeVoltageToPpm(voltage, gainDb) {
+    var gainAdjusted = voltage * (40 / Math.max(1, gainDb));
+    return Math.max(0, (gainAdjusted - 0.1) * 70);
+  }
+
+  document.getElementById("irReadBtn").addEventListener("click", function () {
+    var gainDb = parseFloat(document.getElementById("irGainInput").value);
+    if (!isFinite(gainDb) || gainDb <= 0) gainDb = 40;
+    // Illustrative only: a plausible voltage for a detector that actually has light on it, not the
+    // "a few mV, floating channel" reading from the 2026-10-19 no-detector-attached test.
+    var voltage = 0.6 + Math.random() * 1.8;
+    var reading = {
+      id: nextUid(), voltage: voltage, gainDb: gainDb,
+      ppmH2O: illustrativeVoltageToPpm(voltage, gainDb), readAt: new Date()
+    };
+    irReadings.push(reading);
+    renderIrReadings();
+    renderIrTrend();
+    refreshCombineControls();
+  });
+
+  function renderIrReadings() {
+    var body = document.getElementById("irReadingsBody");
+    if (!irReadings.length) {
+      body.innerHTML = '<tr class="empty"><td colspan="4">No readings yet -- click "Read voltage".</td></tr>';
+      return;
+    }
+    body.innerHTML = irReadings.slice().reverse().map(function (r) {
+      return "<tr><td>" + fmtTime(r.readAt) + "</td>" +
+        '<td class="num">' + r.voltage.toFixed(3) + "</td>" +
+        '<td class="num">' + r.gainDb.toFixed(0) + "</td>" +
+        '<td class="num">' + r.ppmH2O.toFixed(2) + "</td></tr>";
+    }).join("");
+  }
+
+  function renderIrTrend() {
+    var svg = d3.select("#chart-ir-trend");
+    svg.selectAll("*").remove();
+    var w = chartWidth(svg), h = +svg.attr("viewBox").split(" ")[3];
+    svg.attr("viewBox", "0 0 " + w + " " + h);
+    var innerW = w - MARGIN.left - MARGIN.right, innerH = h - MARGIN.top - MARGIN.bottom;
+    var g = svg.append("g").attr("transform", "translate(" + MARGIN.left + "," + MARGIN.top + ")");
+
+    if (!irReadings.length) {
+      g.append("text").attr("x", innerW / 2).attr("y", innerH / 2).attr("text-anchor", "middle")
+        .attr("fill", cssVar("--fg-faint")).attr("font-size", 12)
+        .text("No readings yet -- click \"Read voltage\" above.");
+      return;
+    }
+
+    var x = d3.scaleLinear().domain([1, Math.max(2, irReadings.length)]).range([0, innerW]);
+    var y = d3.scaleLinear().domain([0, d3.max(irReadings, function (r) { return r.ppmH2O; }) * 1.15 || 1]).nice().range([innerH, 0]);
+
+    var tickStep = Math.ceil(irReadings.length / 8);
+    var tickValues = d3.range(1, irReadings.length + 1, tickStep);
+    g.append("g").attr("transform", "translate(0," + innerH + ")")
+      .call(d3.axisBottom(x).tickValues(tickValues).tickFormat(d3.format("d")).tickSize(4)).call(stripDomain);
+    g.append("g").call(d3.axisLeft(y).ticks(5).tickSize(-innerW)).call(stripDomain);
+
+    var line = d3.line().x(function (d, i) { return x(i + 1); }).y(function (d) { return y(d.ppmH2O); }).curve(d3.curveMonotoneX);
+    g.append("path").datum(irReadings).attr("d", line).attr("fill", "none")
+      .attr("stroke", cssVar("--species-h2o")).attr("stroke-width", 1.8);
+    g.selectAll(".dot").data(irReadings).enter().append("circle")
+      .attr("cx", function (d, i) { return x(i + 1); }).attr("cy", function (d) { return y(d.ppmH2O); })
+      .attr("r", 3.5).attr("fill", cssVar("--species-h2o")).attr("stroke", cssVar("--surface")).attr("stroke-width", 1)
+      .append("title").text(function (d) { return fmtTime(d.readAt) + ": " + d.ppmH2O.toFixed(2) + " ppm"; });
+  }
+
+  document.getElementById("irSaveBtn").addEventListener("click", function () {
+    saveChartAsPng("#chart-ir-trend", "ir-humidity-trend.png", "irStatusText");
+  });
+
+  // ---------------- combine into sample: the one deliberate pairing step ----------------
+  function refreshCombineControls() {
+    var uvSelect = document.getElementById("combineUvSelect");
+    var irSelect = document.getElementById("combineIrSelect");
+    uvSelect.innerHTML = analyzedHistory.length
+      ? analyzedHistory.slice().reverse().map(function (h) {
+          return '<option value="' + h.id + '">' + h.run.file_name + " — " + fmtTime(h.analyzedAt) + "</option>";
+        }).join("")
+      : '<option value="">(none analyzed yet)</option>';
+    irSelect.innerHTML = irReadings.length
+      ? irReadings.slice().reverse().map(function (r) {
+          return '<option value="' + r.id + '">' + r.voltage.toFixed(2) + " V — " + fmtTime(r.readAt) + "</option>";
+        }).join("")
+      : '<option value="">(none read yet)</option>';
+    document.getElementById("combineBtn").disabled = !(analyzedHistory.length && irReadings.length);
+  }
+
+  document.getElementById("combineBtn").addEventListener("click", function () {
+    var uvId = parseInt(document.getElementById("combineUvSelect").value, 10);
+    var irId = parseInt(document.getElementById("combineIrSelect").value, 10);
+    var uv = analyzedHistory.filter(function (h) { return h.id === uvId; })[0];
+    var ir = irReadings.filter(function (r) { return r.id === irId; })[0];
+    if (!uv || !ir) return;
+    combinedSamples.push({ id: nextUid(), uv: uv, ir: ir });
+    renderCombinedSamples();
+  });
+
+  function renderCombinedSamples() {
+    var body = document.getElementById("combinedBody");
+    if (!combinedSamples.length) {
+      body.innerHTML = '<tr class="empty"><td colspan="5">No combined samples yet -- analyze a spectrum and take an IR reading, then combine them above.</td></tr>';
+      return;
+    }
+    body.innerHTML = combinedSamples.slice().reverse().map(function (c) {
+      var speciesSummary = Object.keys(c.uv.run.species).map(function (name) {
+        var s = c.uv.run.species[name];
+        var ppm = s.ppm_calibrated === null ? s.ppm_raw : s.ppm_calibrated;
+        return name + ": " + ppm.toFixed(2);
+      }).join(", ");
+      return "<tr><td>" + speciesSummary + "</td>" +
+        '<td class="num">' + c.ir.ppmH2O.toFixed(2) + "</td>" +
+        "<td>" + fmtTime(c.uv.analyzedAt) + "</td>" +
+        "<td>" + fmtTime(c.ir.readAt) + "</td>" +
+        '<td><button class="native-btn small" data-combined-id="' + c.id + '">View plot</button></td></tr>';
+    }).join("");
+    // Each row's own button, not a select-then-click-shared-button pattern like the results
+    // table above -- there's no natural "selected combined row" state to track, and every row
+    // always has a run to plot, so there's nothing a disabled state would ever need to guard.
+    body.querySelectorAll("button[data-combined-id]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = parseInt(btn.dataset.combinedId, 10);
+        var combined = combinedSamples.filter(function (c) { return c.id === id; })[0];
+        if (combined) openPlot(combined.uv.run);
+      });
+    });
+  }
+
+  // ---------------- fit-plot modal ----------------
+  var overlay = document.getElementById("plotOverlay");
+  document.getElementById("plotBtn").addEventListener("click", function () {
+    if (!state.selectedRow) return;
+    openPlot(state.selectedRow);
+  });
+  document.getElementById("closePlotBtn").addEventListener("click", function () { overlay.hidden = true; });
+  overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.hidden = true; });
+
+  function openPlot(run) {
+    document.getElementById("plotTitle").textContent = "Fit plot -- " + run.file_name;
+    document.getElementById("plotCaption").textContent =
+      "RMS residual " + run.rms_residual.toExponential(3) + ", valid pixels (whole detector) " +
+      (run.valid_fraction * 100).toFixed(1) + "%, saturated pixels " + (run.saturated_fraction * 100).toFixed(1) +
+      "%. Cell: T = " + run.temperature_K.toFixed(1) + " K, P = " + (run.pressure_Pa / 1e5).toFixed(2) + " bar.";
+    overlay.hidden = false;
+    renderOverview(run);
+    renderOD(run);
+    renderResidual(run);
+    renderContributions(run);
+  }
+
+  function setStatus(text, isError) {
+    var el = document.getElementById("statusText");
+    el.textContent = text;
+    el.classList.toggle("is-error", !!isError);
+  }
+
+  // ---------------- charts (reused across modal openings) ----------------
+  var MARGIN = { top: 8, right: 12, bottom: 20, left: 42 };
+
+  function chartWidth(svg) {
+    var box = svg.node().getBoundingClientRect();
+    return Math.max(260, box.width || svg.node().viewBox.baseVal.width);
+  }
+
+  function stripDomain(sel) {
+    sel.select(".domain").attr("stroke", cssVar("--border-strong"));
+    sel.selectAll("text").attr("fill", cssVar("--fg-muted"));
+  }
+
+  function windowXScale(run, innerW) {
+    return d3.scaleLinear().domain(d3.extent(run.window.wavelength_nm)).range([0, innerW]);
+  }
+
+  function renderOverview(run) {
+    var svg = d3.select("#chart-overview");
+    svg.selectAll("*").remove();
+    var w = chartWidth(svg), h = +svg.attr("viewBox").split(" ")[3];
+    svg.attr("viewBox", "0 0 " + w + " " + h);
+    var innerW = w - MARGIN.left - MARGIN.right, innerH = h - MARGIN.top - MARGIN.bottom;
+    var g = svg.append("g").attr("transform", "translate(" + MARGIN.left + "," + MARGIN.top + ")");
+
+    var ov = run.overview;
+    var x = d3.scaleLinear().domain(d3.extent(ov.wavelength_nm)).range([0, innerW]);
+    var allY = ov.reference_counts.concat(ov.sample_counts, ov.dark_counts);
+    var y = d3.scaleLinear().domain([d3.min(allY) * 0.95, d3.max(allY) * 1.05]).range([innerH, 0]);
+
+    g.append("rect")
+      .attr("x", x(run.fit_window_nm[0])).attr("width", Math.max(2, x(run.fit_window_nm[1]) - x(run.fit_window_nm[0])))
+      .attr("y", 0).attr("height", innerH)
+      .attr("fill", cssVar("--accent-sample")).attr("opacity", 0.12);
+
+    g.append("g").attr("transform", "translate(0," + innerH + ")").call(d3.axisBottom(x).ticks(6).tickSize(4)).call(stripDomain);
+    g.append("g").call(d3.axisLeft(y).ticks(4).tickSize(-innerW)).call(stripDomain);
+
+    var line = d3.line().x(function (d, i) { return x(ov.wavelength_nm[i]); }).y(function (d) { return y(d); }).curve(d3.curveMonotoneX);
+    g.append("path").datum(ov.dark_counts).attr("d", line).attr("fill", "none").attr("stroke", cssVar("--fg-faint")).attr("stroke-width", 1).attr("stroke-dasharray", "3 2");
+    g.append("path").datum(ov.reference_counts).attr("d", line).attr("fill", "none").attr("stroke", cssVar("--accent-ref")).attr("stroke-width", 1.3);
+    g.append("path").datum(ov.sample_counts).attr("d", line).attr("fill", "none").attr("stroke", cssVar("--accent-sample")).attr("stroke-width", 1.3);
+  }
+
+  function renderOD(run) {
+    var svg = d3.select("#chart-od");
+    svg.selectAll("*").remove();
+    var w = chartWidth(svg), h = +svg.attr("viewBox").split(" ")[3];
+    svg.attr("viewBox", "0 0 " + w + " " + h);
+    var innerW = w - MARGIN.left - MARGIN.right, innerH = h - MARGIN.top - MARGIN.bottom;
+    var g = svg.append("g").attr("transform", "translate(" + MARGIN.left + "," + MARGIN.top + ")");
+
+    var win = run.window;
+    var x = windowXScale(run, innerW);
+    var measured = win.od_measured, model = win.od_model;
+    var allVals = measured.concat(model).filter(function (v) { return v !== null; });
+    var y = d3.scaleLinear().domain(d3.extent(allVals)).nice().range([innerH, 0]);
+
+    g.append("rect")
+      .attr("x", x(run.fit_window_nm[0])).attr("width", Math.max(2, x(run.fit_window_nm[1]) - x(run.fit_window_nm[0])))
+      .attr("y", 0).attr("height", innerH)
+      .attr("fill", cssVar("--accent")).attr("opacity", 0.07);
+
+    g.append("g").attr("transform", "translate(0," + innerH + ")").call(d3.axisBottom(x).ticks(7).tickSize(4)).call(stripDomain);
+    g.append("g").call(d3.axisLeft(y).ticks(5).tickSize(-innerW)).call(stripDomain);
+
+    g.append("text").attr("x", x(run.fit_window_nm[0]) + 4).attr("y", 10)
+      .attr("fill", cssVar("--fg-faint")).attr("font-size", "9px").text("fit window →");
+
+    var measuredLine = d3.line().defined(function (d) { return d !== null; })
+      .x(function (d, i) { return x(win.wavelength_nm[i]); }).y(function (d) { return y(d); });
+    g.append("path").datum(measured).attr("d", measuredLine).attr("fill", "none")
+      .attr("stroke", cssVar("--fg-muted")).attr("stroke-width", 1).attr("opacity", 0.6);
+    g.selectAll(".dot").data(win.wavelength_nm).enter().append("circle")
+      .attr("cx", function (d) { return x(d); })
+      .attr("cy", function (d, i) { return measured[i] === null ? -9999 : y(measured[i]); })
+      .attr("r", 2.1).attr("fill", cssVar("--fg-muted"));
+
+    var modelLine = d3.line().defined(function (d) { return d !== null; })
+      .x(function (d, i) { return x(win.wavelength_nm[i]); }).y(function (d) { return y(d); });
+    g.append("path").datum(model).attr("d", modelLine).attr("fill", "none").attr("stroke", cssVar("--accent")).attr("stroke-width", 2.2);
+
+    var focus = g.append("g").style("display", "none");
+    focus.append("line").attr("y1", 0).attr("y2", innerH).attr("stroke", cssVar("--fg-faint")).attr("stroke-dasharray", "2 2");
+    var tooltip = d3.select("#tooltip");
+    var bisect = d3.bisector(function (d) { return d; }).left;
+
+    svg.append("rect").attr("x", MARGIN.left).attr("y", MARGIN.top).attr("width", innerW).attr("height", innerH)
+      .attr("fill", "transparent")
+      .on("mouseenter", function () { focus.style("display", null); tooltip.style("opacity", 1); })
+      .on("mouseleave", function () { focus.style("display", "none"); tooltip.style("opacity", 0); })
+      .on("mousemove", function (event) {
+        var mx = d3.pointer(event)[0] - MARGIN.left;
+        var wl = x.invert(mx);
+        var i = Math.min(win.wavelength_nm.length - 1, Math.max(0, bisect(win.wavelength_nm, wl)));
+        focus.attr("transform", "translate(" + x(win.wavelength_nm[i]) + ",0)");
+        var measuredTxt = measured[i] === null ? "-" : measured[i].toFixed(5);
+        var modelTxt = model[i] === null ? "outside fit window" : model[i].toFixed(5);
+        tooltip.html(win.wavelength_nm[i].toFixed(2) + " nm<br>measured " + measuredTxt + "<br>model " + modelTxt);
+        var box = svg.node().getBoundingClientRect();
+        var left = (x(win.wavelength_nm[i]) / innerW) * box.width;
+        tooltip.style("left", Math.min(box.width - 110, Math.max(0, left + 10)) + "px").style("top", "4px");
+      });
+  }
+
+  function renderResidual(run) {
+    var svg = d3.select("#chart-residual");
+    svg.selectAll("*").remove();
+    var w = chartWidth(svg), h = +svg.attr("viewBox").split(" ")[3];
+    svg.attr("viewBox", "0 0 " + w + " " + h);
+    var innerW = w - MARGIN.left - MARGIN.right, innerH = h - MARGIN.top - MARGIN.bottom;
+    var g = svg.append("g").attr("transform", "translate(" + MARGIN.left + "," + MARGIN.top + ")");
+
+    var win = run.window;
+    var x = windowXScale(run, innerW);
+    var vals = win.residual.filter(function (v) { return v !== null; });
+    var extent = d3.extent(vals);
+    var maxAbs = Math.max(Math.abs(extent[0]), Math.abs(extent[1]));
+    var y = d3.scaleLinear().domain([-maxAbs, maxAbs]).range([innerH, 0]);
+
+    g.append("rect")
+      .attr("x", x(run.fit_window_nm[0])).attr("width", Math.max(2, x(run.fit_window_nm[1]) - x(run.fit_window_nm[0])))
+      .attr("y", 0).attr("height", innerH)
+      .attr("fill", cssVar("--accent")).attr("opacity", 0.07);
+
+    g.append("g").attr("transform", "translate(0," + innerH + ")").call(d3.axisBottom(x).ticks(7).tickSize(4)).call(stripDomain);
+    g.append("g").call(d3.axisLeft(y).ticks(3).tickSize(-innerW)).call(stripDomain);
+    g.append("line").attr("class", "zero-line").attr("x1", 0).attr("x2", innerW).attr("y1", y(0)).attr("y2", y(0));
+
+    var line = d3.line().defined(function (d) { return d !== null; })
+      .x(function (d, i) { return x(win.wavelength_nm[i]); }).y(function (d) { return y(d); });
+    g.append("path").datum(win.residual).attr("d", line).attr("fill", "none").attr("stroke", cssVar("--accent-sample")).attr("stroke-width", 1.1);
+  }
+
+  var SPECIES_COLOR = { DEMO_FINE: "--accent-fine", DEMO_BROAD: "--accent-broad" };
+  var SPECIES_LABEL = { DEMO_FINE: "DEMO_FINE (fine lines)", DEMO_BROAD: "DEMO_BROAD (broad band)" };
+
+  function renderContributions(run) {
+    var svg = d3.select("#chart-contrib");
+    svg.selectAll("*").remove();
+    var w = chartWidth(svg), h = +svg.attr("viewBox").split(" ")[3];
+    svg.attr("viewBox", "0 0 " + w + " " + h);
+    var innerW = w - MARGIN.left - MARGIN.right, innerH = h - MARGIN.top - MARGIN.bottom;
+    var g = svg.append("g").attr("transform", "translate(" + MARGIN.left + "," + MARGIN.top + ")");
+
+    var win = run.window;
+    var x = windowXScale(run, innerW);
+    var allVals = [];
+    Object.keys(win.species_contributions).forEach(function (k) {
+      allVals = allVals.concat(win.species_contributions[k].filter(function (v) { return v !== null; }));
+    });
+    var y = d3.scaleLinear().domain(d3.extent(allVals)).nice().range([innerH, 0]);
+
+    g.append("rect")
+      .attr("x", x(run.fit_window_nm[0])).attr("width", Math.max(2, x(run.fit_window_nm[1]) - x(run.fit_window_nm[0])))
+      .attr("y", 0).attr("height", innerH)
+      .attr("fill", cssVar("--accent")).attr("opacity", 0.07);
+
+    g.append("g").attr("transform", "translate(0," + innerH + ")").call(d3.axisBottom(x).ticks(7).tickSize(4)).call(stripDomain);
+    g.append("g").call(d3.axisLeft(y).ticks(4).tickSize(-innerW)).call(stripDomain);
+    g.append("line").attr("class", "zero-line").attr("x1", 0).attr("x2", innerW).attr("y1", y(0)).attr("y2", y(0));
+
+    var line = d3.line().defined(function (d) { return d !== null; })
+      .x(function (d, i) { return x(win.wavelength_nm[i]); }).y(function (d) { return y(d); });
+    Object.keys(win.species_contributions).forEach(function (name) {
+      g.append("path").datum(win.species_contributions[name]).attr("d", line)
+        .attr("fill", "none").attr("stroke", cssVar(SPECIES_COLOR[name] || "--fg-muted")).attr("stroke-width", 1.4);
+    });
+
+    var legend = document.getElementById("contrib-legend");
+    legend.innerHTML = Object.keys(win.species_contributions).map(function (name) {
+      return '<span><span class="swatch" style="background:' + cssVar(SPECIES_COLOR[name] || "--fg-muted") + '"></span>' + (SPECIES_LABEL[name] || name) + "</span>";
+    }).join("");
+  }
+
+  // ---------------- literature reference band map + pure-spectra tab ----------------
+  // Static reference, not data from any run: where CLAUDE.md's four target species (NOx/NO2,
+  // SOx/SO2, O2, H2O) are reported in the literature to absorb, across the AvaSpec's full
+  // 200-871.5 nm range. PROVISIONAL -- see docs/huellas-absorcion-no2-so2-h2o.md for the full
+  // citation table and open caveats (PDFs not all read yet).
+  var AVASPEC_RANGE_NM = [200, 871.5];
+  var LITERATURE_BANDS = [
+    {
+      key: "nox", label: "NOx (NO2)", range: "400–500 nm", color: "--species-nox", defaultPpm: 100,
+      bands: [[400, 500]],
+      citation: "Vandaele et al. 1998; Bogumil et al. 2003; Coquart et al. 1995 (MPI-Mainz Atlas file measured exactly 400-500 nm) -- 3 convergent sources, no PDF read yet"
+    },
+    {
+      key: "sox", label: "SOx (SO2)", range: "227–420 nm", color: "--species-sox", defaultPpm: 100,
+      bands: [[227, 345, 0.65], [345, 420, 0.3]],
+      citation: "Vandaele, Hermans & Fally 2009 pt. II (227-345 nm, strong); Hermans, Vandaele & Fally 2009 pt. I (345-420 nm, weaker); one continuous measured run 227.275-416.658 nm"
+    },
+    {
+      key: "o2", label: "O2", range: "205–245, 627–634, 682–694, 759–772 nm", color: "--species-o2", defaultPpm: 2000,
+      bands: [[205, 245, 0.22], [627, 634, 0.3], [682, 694, 0.45], [759, 772, 0.65]],
+      citation: "Herzberg continuum (Cheung/Jenouvrier/JPL-2010); gamma band ~630 nm is mostly the collisional O2-O2 (O4) complex (Naus & Ubachs 1999) -- scales as [O2]^2, likely undetectable as a CO2 trace gas even though it shows in atmospheric air; B-band ~688 nm, A-band ~760 nm (satellite remote-sensing literature). No PDFs read yet"
+    },
+    {
+      key: "h2o", label: "H2O", range: "720–730, ~820 nm (weak)", color: "--species-h2o", defaultPpm: 150,
+      bands: [[720, 730, 0.4], [818, 822, 0.4]],
+      citation: "720-730 nm is a measured range; ~820 nm is a single reported wavelength, not a range (Giver et al.; Belmiloud et al., +10-15% intensity vs. HITRAN). The strong 940/1130/1370/1450 nm bands fall outside the AvaSpec, inside the PDA10CS-EC's 900-1700 nm range instead"
+    }
+  ];
+  // Only so the illustrative curves respond differently to temperature -- made up, not measured.
+  // Reused by the T/P calibration tab's curve/grid too, so both tabs agree on the same 4 species.
+  var PURE_T_SENSITIVITY = { nox: 0.0019, sox: 0.0026, o2: 0.0008, h2o: 0.0041 };
+
+  function renderBandMap(run) {
+    var svg = d3.select("#chart-bandmap");
+    svg.selectAll("*").remove();
+    var w = chartWidth(svg), h = +svg.attr("viewBox").split(" ")[3];
+    svg.attr("viewBox", "0 0 " + w + " " + h);
+    var bandMargin = { top: 2, right: 10, bottom: 20, left: 10 };
+    var innerW = w - bandMargin.left - bandMargin.right;
+    var labelH = 13, barH = 15, rowGap = 6, rowH = labelH + barH + rowGap;
+    var innerH = LITERATURE_BANDS.length * rowH - rowGap;
+    var g = svg.append("g").attr("transform", "translate(" + bandMargin.left + "," + bandMargin.top + ")");
+
+    var x = d3.scaleLinear().domain(AVASPEC_RANGE_NM).range([0, innerW]);
+
+    if (run) {
+      g.append("rect")
+        .attr("x", x(run.fit_window_nm[0])).attr("width", Math.max(2, x(run.fit_window_nm[1]) - x(run.fit_window_nm[0])))
+        .attr("y", -3).attr("height", innerH + 6)
+        .attr("fill", cssVar("--fg-faint")).attr("opacity", 0.22)
+        .append("title").text("This run's fit window: " + run.fit_window_nm[0] + "–" + run.fit_window_nm[1] + " nm");
+    }
+
+    LITERATURE_BANDS.forEach(function (species, i) {
+      var rowY = i * rowH;
+      var barY = rowY + labelH;
+      var lane = g.append("g");
+      lane.append("text").attr("x", 0).attr("y", rowY + labelH - 3)
+        .attr("fill", cssVar("--fg")).attr("font-size", 10)
+        .text(species.label + " — " + species.range);
+      species.bands.forEach(function (band) {
+        var lowNm = Math.max(band[0], AVASPEC_RANGE_NM[0]);
+        var highNm = Math.min(band[1], AVASPEC_RANGE_NM[1]);
+        var bx = x(lowNm), bw = Math.max(2, x(highNm) - bx);
+        lane.append("rect")
+          .attr("x", bx).attr("width", bw).attr("y", barY).attr("height", barH).attr("rx", 3)
+          .attr("fill", cssVar(species.color)).attr("opacity", band.length > 2 ? band[2] : 0.55)
+          .attr("stroke", cssVar(species.color)).attr("stroke-width", 1)
+          .append("title").text(species.label + ": " + band[0] + "–" + band[1] + " nm. " + species.citation);
+      });
+    });
+
+    g.append("g").attr("transform", "translate(0," + innerH + ")")
+      .call(d3.axisBottom(x).ticks(8).tickSize(4)).call(stripDomain);
+  }
+
+  // ---- pure spectra: one simulated curve per loaded species, built from the literature bands ----
+  // Each species carries its OWN temperature/pressure, same as a real calibration run: every pure-gas
+  // measurement is taken at whatever T/P the chamber was set to for that one dose, not a shared dial
+  // that applies to every gas at once (see the calibration-campaign diagram: one gas, one condition,
+  // per capture). "Upload..." simulates picking that one recorded file for this species.
+  var PURE_WAVELENGTHS = d3.range(AVASPEC_RANGE_NM[0], AVASPEC_RANGE_NM[1], 1.5);
+  var pureState = {}; // key -> { loaded: bool, fileName: string|null, ppm: number, t: number (K), p: number (bar) }
+  // Nothing is loaded at the start: a species only appears on the charts once you actually pick
+  // its file with "Browse...", same as the real pipeline -- there is no curve before there is a
+  // capture.
+  LITERATURE_BANDS.forEach(function (sp) { pureState[sp.key] = { loaded: false, fileName: null, ppm: sp.defaultPpm, t: 296, p: 1.0 }; });
+  var pureHiddenSpecies = {};
+  var pureNoiseSeed = {}; // one fixed noise pattern per species, so toggling T/P doesn't make it flicker
+
+  function seededNoise(key, n) {
+    if (pureNoiseSeed[key] && pureNoiseSeed[key].length === n) return pureNoiseSeed[key];
+    var s = 0;
+    for (var c = 0; c < key.length; c++) s = (s * 31 + key.charCodeAt(c)) % 100000;
+    var out = new Array(n);
+    for (var i = 0; i < n; i++) {
+      s = (s * 9301 + 49297) % 233280;
+      out[i] = s / 233280 - 0.5;
+    }
+    pureNoiseSeed[key] = out;
+    return out;
+  }
+
+  function gaussianBandSum(species, wavelengths) {
+    return wavelengths.map(function (wl) {
+      var total = 0;
+      species.bands.forEach(function (band) {
+        var center = (band[0] + band[1]) / 2;
+        var sigma = Math.max(1.5, (band[1] - band[0]) / 2.6);
+        var amp = band.length > 2 ? band[2] : 0.55;
+        total += amp * Math.exp(-Math.pow(wl - center, 2) / (2 * sigma * sigma));
+      });
+      return total;
+    });
+  }
+
+  // Cached shape per species (independent of ppm/T/P) so re-scaling doesn't redo the Gaussian sum.
+  var pureBandShape = {};
+  LITERATURE_BANDS.forEach(function (sp) { pureBandShape[sp.key] = gaussianBandSum(sp, PURE_WAVELENGTHS); });
+
+  // The combined multiplier a species' curve gets from its own ppm/T/P, shown next to its row so a
+  // T/P edit is traceable even when the visual change on the chart is subtle.
+  function pureScaleFactor(spKey) {
+    var sp = LITERATURE_BANDS.filter(function (s) { return s.key === spKey; })[0];
+    var st = pureState[spKey];
+    var tFactor = 1 - (PURE_T_SENSITIVITY[spKey] || 0.002) * (st.t - 296);
+    var pFactor = Math.sqrt(Math.max(0.05, st.p));
+    var ppmScale = st.ppm / sp.defaultPpm;
+    return ppmScale * tFactor * pFactor;
+  }
+
+  function pureSeries(spKey) {
+    var scale = pureScaleFactor(spKey);
+    var shape = pureBandShape[spKey];
+    var noise = seededNoise(spKey, shape.length);
+    var peak = d3.max(shape) || 1;
+    return shape.map(function (v, i) {
+      var val = v * scale;
+      return Math.max(0, val + noise[i] * 0.018 * Math.max(0.3, peak * scale));
+    });
+  }
+
+  function buildPureSpeciesPanel() {
+    var panel = document.getElementById("pureSpeciesPanel");
+    panel.innerHTML =
+      '<div class="pure-species-head"><span></span><span>Species</span><span>AvaSoft file</span><span>ppm</span><span>T (K)</span><span>P (bar)</span><span>scale</span></div>';
+    LITERATURE_BANDS.forEach(function (sp) {
+      var st = pureState[sp.key];
+      var row = document.createElement("div");
+      row.className = "pure-species-row" + (st.loaded ? "" : " is-off");
+      var options = '<option value="">Browse...</option>' + state.runs.map(function (run) {
+        var selected = st.fileName === run.file_name ? " selected" : "";
+        return '<option value="' + run.file_name + '"' + selected + ">" + run.file_name + " — " + run.label + "</option>";
+      }).join("");
+      row.innerHTML =
+        '<span class="swatch-dot" style="background:' + cssVar(sp.color) + '"></span>' +
+        '<span><span class="sp-name">' + sp.label + '</span><span class="sp-range">' + sp.range + '</span></span>' +
+        '<span class="sp-browse-wrap">' +
+          '<select class="native-input' + (st.loaded ? " loaded" : "") + '" data-browse-for="' + sp.key + '" title="Pick the AvaSoft export captured with only ' + sp.label + ' in the chamber">' + options + '</select>' +
+        '</span>' +
+        '<span class="field-wrap">ppm<input class="native-input" type="number" min="0" step="10" value="' + st.ppm + '" data-field="ppm" data-sp="' + sp.key + '"></span>' +
+        '<span class="field-wrap">temp.<input class="native-input" type="number" step="1" min="250" max="330" value="' + st.t + '" data-field="t" data-sp="' + sp.key + '"></span>' +
+        '<span class="field-wrap">press.<input class="native-input" type="number" step="0.1" min="0.1" max="90" value="' + st.p + '" data-field="p" data-sp="' + sp.key + '"></span>' +
+        '<span class="scale-readout" id="scale-' + sp.key + '">×' + pureScaleFactor(sp.key).toFixed(2) + '</span>';
+      panel.appendChild(row);
+    });
+
+    panel.querySelectorAll("input[data-field]").forEach(function (inp) {
+      inp.addEventListener("input", function () {
+        var key = inp.dataset.sp, field = inp.dataset.field;
+        var v = parseFloat(inp.value);
+        if (!isFinite(v)) return;
+        pureState[key][field] = v;
+        var readout = document.getElementById("scale-" + key);
+        if (readout) readout.textContent = "×" + pureScaleFactor(key).toFixed(2);
+        renderPureSpectrum();
+      });
+    });
+
+    // A native <select> per species, same file list as the Analyze tab's own picker -- a pure-gas
+    // capture is a normal AvaSoft Dark/Reference/Sample export, just taken with only that one gas
+    // in the chamber, so reusing the same demo files here is the right mental model even though
+    // this is still a mockup (no real per-species pure captures exist yet).
+    panel.querySelectorAll("select[data-browse-for]").forEach(function (sel) {
+      var key = sel.dataset.browseFor;
+      sel.addEventListener("change", function () {
+        var fileName = sel.value;
+        if (!fileName) {
+          pureState[key].loaded = false;
+          pureState[key].fileName = null;
+          pureHiddenSpecies[key] = true;
+        } else {
+          var run = state.runs.filter(function (r) { return r.file_name === fileName; })[0];
+          pureState[key].loaded = true;
+          pureState[key].fileName = fileName;
+          pureState[key].t = run.temperature_K;
+          pureState[key].p = run.pressure_Pa / 1e5;
+          pureHiddenSpecies[key] = false;
+        }
+        buildPureSpeciesPanel();
+        renderPureSpectrum();
+        var loadedCount = LITERATURE_BANDS.filter(function (s) { return pureState[s.key].loaded; }).length;
+        setPureStatus(loadedCount + " of " + LITERATURE_BANDS.length + " pure-gas files loaded.");
+      });
+    });
+  }
+  document.addEventListener("click", function () {
+    document.querySelectorAll(".pure-species-row .browse-menu").forEach(function (m) { m.hidden = true; });
+  });
+
+  function renderPureSpectrum() {
+    var svg = d3.select("#chart-pure");
+    svg.selectAll("*").remove();
+    var w = chartWidth(svg), h = +svg.attr("viewBox").split(" ")[3];
+    svg.attr("viewBox", "0 0 " + w + " " + h);
+    var innerW = w - MARGIN.left - MARGIN.right, innerH = h - MARGIN.top - MARGIN.bottom;
+    var g = svg.append("g").attr("transform", "translate(" + MARGIN.left + "," + MARGIN.top + ")");
+
+    var baseX = d3.scaleLinear().domain(AVASPEC_RANGE_NM).range([0, innerW]);
+    var series = {};
+    var allVals = [0];
+    LITERATURE_BANDS.forEach(function (sp) {
+      if (!pureState[sp.key].loaded) return;
+      series[sp.key] = pureSeries(sp.key);
+      allVals = allVals.concat(series[sp.key]);
+    });
+    var y = d3.scaleLinear().domain([0, d3.max(allVals) * 1.12 || 1]).nice().range([innerH, 0]);
+
+    var clipId = "pure-clip";
+    svg.append("clipPath").attr("id", clipId).append("rect").attr("width", innerW).attr("height", innerH);
+
+    var xAxisG = g.append("g").attr("transform", "translate(0," + innerH + ")");
+    var yAxisG = g.append("g");
+    var plotArea = g.append("g").attr("clip-path", "url(#" + clipId + ")");
+
+    var paths = {};
+    Object.keys(series).forEach(function (key) {
+      paths[key] = plotArea.append("path").datum(series[key])
+        .attr("fill", "none")
+        .attr("stroke", cssVar(LITERATURE_BANDS.filter(function (s) { return s.key === key; })[0].color))
+        .attr("stroke-width", 1.8)
+        .style("display", pureHiddenSpecies[key] ? "none" : null);
+    });
+
+    function redraw(currentX) {
+      xAxisG.call(d3.axisBottom(currentX).ticks(9).tickSize(4)).call(stripDomain);
+      yAxisG.call(d3.axisLeft(y).ticks(5).tickSize(-innerW)).call(stripDomain);
+      yAxisG.append("text").attr("x", -34).attr("y", -6).attr("fill", cssVar("--fg-faint")).attr("font-size", "9px").text("f(λ) [-]");
+      var line = d3.line()
+        .x(function (d, i) { return currentX(PURE_WAVELENGTHS[i]); }).y(function (d) { return y(d); })
+        .curve(d3.curveMonotoneX);
+      Object.keys(paths).forEach(function (key) { paths[key].attr("d", line(series[key])); });
+    }
+    redraw(baseX);
+
+    if (Object.keys(series).length === 0) {
+      g.append("text").attr("x", innerW / 2).attr("y", innerH / 2).attr("text-anchor", "middle")
+        .attr("fill", cssVar("--fg-faint")).attr("font-size", 12)
+        .text("No pure-gas curves loaded -- click \"Browse...\" on a species above.");
+    }
+
+    var zoomBehavior = d3.zoom().scaleExtent([1, 12])
+      .translateExtent([[0, 0], [innerW, innerH]]).extent([[0, 0], [innerW, innerH]])
+      .on("zoom", function (event) { redraw(event.transform.rescaleX(baseX)); });
+    svg.call(zoomBehavior).on("dblclick.zoom", null);
+    svg.on("dblclick", function () { svg.transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity); });
+    document.getElementById("pureResetZoomBtn").onclick = function () {
+      svg.transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity);
+    };
+
+    var legend = document.getElementById("pure-legend");
+    legend.innerHTML = LITERATURE_BANDS.filter(function (s) { return pureState[s.key].loaded; }).map(function (sp) {
+      var off = pureHiddenSpecies[sp.key];
+      return '<span data-species="' + sp.key + '" class="' + (off ? "off" : "") + '">' +
+        '<span class="swatch" style="background:' + cssVar(sp.color) + '"></span>' +
+        pureState[sp.key].ppm + " ppm " + sp.label + "</span>";
+    }).join("");
+    legend.querySelectorAll("span[data-species]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var key = el.dataset.species;
+        pureHiddenSpecies[key] = !pureHiddenSpecies[key];
+        el.classList.toggle("off", !!pureHiddenSpecies[key]);
+        if (paths[key]) paths[key].style("display", pureHiddenSpecies[key] ? "none" : null);
+      });
+    });
+
+    renderCalibScatter();
+  }
+
+  function initPureTab() {
+    buildPureSpeciesPanel();
+    renderBandMap(null);
+    renderPureSpectrum();
+    var loadedCount = LITERATURE_BANDS.filter(function (s) { return pureState[s.key].loaded; }).length;
+    setPureStatus(loadedCount + " of " + LITERATURE_BANDS.length + " pure-gas curves uploaded.");
+  }
+
+  document.getElementById("pureSaveBtn").addEventListener("click", function () {
+    saveChartAsPng("#chart-pure", "pure-spectra.png");
+  });
+
+  // Standalone export: the page's chart styling lives in an external <style> block (CSS classes,
+  // custom properties), which a cloned, detached SVG can't see -- so the handful of rules that
+  // actually matter for a chart (axis text, gridlines, the zero line) are inlined here with their
+  // resolved color values before serializing, or the exported PNG comes out missing its axes.
+  function setStatusEl(elId, text, isError) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle("is-error", !!isError);
+  }
+
+  function saveChartAsPng(svgSelector, filename, statusElId) {
+    statusElId = statusElId || "pureStatusText";
+    var svgEl = document.querySelector(svgSelector);
+    if (!svgEl) return;
+    if (!downloadsCapability) {
+      setStatusEl(statusElId, "Image export isn't available in this view.", true);
+      return;
+    }
+    var box = svgEl.viewBox.baseVal;
+    var scale = 2;
+    var clone = svgEl.cloneNode(true);
+    clone.setAttribute("width", box.width);
+    clone.setAttribute("height", box.height);
+    var styleEl = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    styleEl.textContent =
+      "text { font-family: " + cssVar("--font") + "; font-size: 10px; fill: " + cssVar("--fg-muted") + "; }" +
+      ".tick line { stroke: " + cssVar("--border") + "; stroke-dasharray: 2 2; }" +
+      ".zero-line { stroke: " + cssVar("--fg-faint") + "; stroke-width: 1; }";
+    clone.insertBefore(styleEl, clone.firstChild);
+
+    var svgData = new XMLSerializer().serializeToString(clone);
+    var svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    var url = URL.createObjectURL(svgBlob);
+    var img = new Image();
+    img.onload = function () {
+      var canvas = document.createElement("canvas");
+      canvas.width = box.width * scale;
+      canvas.height = box.height * scale;
+      var ctx = canvas.getContext("2d");
+      ctx.fillStyle = cssVar("--surface") || "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(function (blob) {
+        downloadsCapability.save({ filename: filename, data: blob })
+          .then(function () { setStatusEl(statusElId, 'Saved "' + filename + '".'); })
+          .catch(function (err) {
+            if (err && err.code === "declined") return; // the viewer said no -- nothing to report
+            setStatusEl(statusElId, "error: could not save the image (" + (err && err.message ? err.message : err) + ")", true);
+          });
+      }, "image/png");
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      setStatusEl(statusElId, "error: could not export the chart image", true);
+    };
+    img.src = url;
+  }
+
+  // ---------------- correction factor: one point per loaded gas, not a pre-baked curve ----------
+  // Same 4 real target species and sensitivities as the rest of the Pure spectra tab
+  // (PURE_T_SENSITIVITY) -- this is the empirical correction DOAS itself doesn't provide (see ADR
+  // 0004): DOAS gives a raw ppm from the spectral fit, and this factor (built from the lab's own
+  // T/P calibration runs, not calculated by DOAS) corrects it for the real temperature/pressure.
+  // Deliberately NOT a smooth curve across all temperatures: a real calibration campaign only ever
+  // has the handful of discrete (gas, T, P) points someone actually measured, so this plots exactly
+  // one point per species currently loaded above, at that species' own T -- as you "Upload..." or
+  // "Browse..." more pure-gas files, more points would appear, the same way the real campaign
+  // builds up its data one capture at a time (see docs/diagrams/scope_co2_calibration_diagram.png).
+  function illustrativeFactor(t, pBar, speciesKey) {
+    var sensitivity = PURE_T_SENSITIVITY[speciesKey] || 0.0021;
+    return 1 + sensitivity * (t - 296) - 0.0016 * Math.sqrt(pBar) + 0.00004 * pBar;
+  }
+
+  function renderCalibScatter() {
+    var svg = d3.select("#chart-calib-scatter");
+    svg.selectAll("*").remove();
+    var w = chartWidth(svg), h = +svg.attr("viewBox").split(" ")[3];
+    svg.attr("viewBox", "0 0 " + w + " " + h);
+    var innerW = w - MARGIN.left - MARGIN.right, innerH = h - MARGIN.top - MARGIN.bottom;
+    var g = svg.append("g").attr("transform", "translate(" + MARGIN.left + "," + MARGIN.top + ")");
+
+    var loaded = LITERATURE_BANDS.filter(function (s) { return pureState[s.key].loaded; });
+    var points = loaded.map(function (sp) {
+      var st = pureState[sp.key];
+      return { sp: sp, t: st.t, f: illustrativeFactor(st.t, st.p, sp.key) };
+    });
+
+    var tExtent = points.length ? d3.extent(points, function (d) { return d.t; }) : [280, 320];
+    var tPad = Math.max(5, (tExtent[1] - tExtent[0]) * 0.25 || 10);
+    var x = d3.scaleLinear().domain([tExtent[0] - tPad, tExtent[1] + tPad]).range([0, innerW]);
+    var fExtent = points.length ? d3.extent(points, function (d) { return d.f; }) : [0.95, 1.05];
+    var fPad = Math.max(0.01, (fExtent[1] - fExtent[0]) * 0.3);
+    var y = d3.scaleLinear().domain([fExtent[0] - fPad, fExtent[1] + fPad]).nice().range([innerH, 0]);
+
+    g.append("g").attr("transform", "translate(0," + innerH + ")").call(d3.axisBottom(x).ticks(6).tickSize(4)).call(stripDomain);
+    g.append("g").call(d3.axisLeft(y).ticks(5).tickSize(-innerW)).call(stripDomain);
+    g.append("line").attr("class", "zero-line").attr("x1", 0).attr("x2", innerW).attr("y1", y(1)).attr("y2", y(1));
+    g.append("text").attr("x", innerW - 2).attr("y", y(1) - 4).attr("text-anchor", "end")
+      .attr("fill", cssVar("--fg-faint")).attr("font-size", "9px").text("factor = 1 (no correction needed)");
+
+    // Points at (nearly) the same T and factor land on the same pixel and hide each other -- e.g.
+    // every species defaults to T=296K, where the temperature term is zero for all of them, so a
+    // fresh "Browse..." of several files at that default can coincide exactly. Group by rounded
+    // pixel position and fan coincident points out in a small circle so every one stays visible
+    // and clickable.
+    var byPixel = {};
+    points.forEach(function (d) {
+      var key = Math.round(x(d.t)) + "," + Math.round(y(d.f));
+      (byPixel[key] = byPixel[key] || []).push(d);
+    });
+    Object.keys(byPixel).forEach(function (key) {
+      var group = byPixel[key];
+      var fanR = group.length > 1 ? 7 : 0;
+      group.forEach(function (d, i) {
+        var angle = (2 * Math.PI * i) / group.length - Math.PI / 2;
+        d.cx = x(d.t) + fanR * Math.cos(angle);
+        d.cy = y(d.f) + fanR * Math.sin(angle);
+      });
+    });
+
+    points.forEach(function (d) {
+      g.append("line").attr("x1", x(d.t)).attr("x2", d.cx).attr("y1", y(1)).attr("y2", d.cy)
+        .attr("stroke", cssVar(d.sp.color)).attr("stroke-width", 1).attr("opacity", 0.4);
+      g.append("circle").attr("cx", d.cx).attr("cy", d.cy).attr("r", 5)
+        .attr("fill", cssVar(d.sp.color)).attr("stroke", cssVar("--surface")).attr("stroke-width", 1.5)
+        .append("title").text(d.sp.label + ": T = " + d.t.toFixed(1) + " K → factor " + d.f.toFixed(3));
+    });
+
+    if (!points.length) {
+      g.append("text").attr("x", innerW / 2).attr("y", innerH / 2).attr("text-anchor", "middle")
+        .attr("fill", cssVar("--fg-faint")).attr("font-size", 12)
+        .text("No pure-gas files loaded -- nothing to plot yet.");
+    }
+
+    var legend = document.getElementById("calib-scatter-legend");
+    legend.innerHTML = points.map(function (d) {
+      return '<span><span class="swatch" style="background:' + cssVar(d.sp.color) + '"></span>' +
+        d.sp.label + " (" + pureState[d.sp.key].ppm + " ppm @ " + d.t.toFixed(1) + " K)</span>";
+    }).join("");
+  }
+})();
+</script>
+
+</body></html>
