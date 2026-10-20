@@ -138,8 +138,9 @@ table.treeview tbody.empty td { color: var(--fg-faint); text-align: center; padd
 
 /* ---- pure-spectra tab ---- */
 .bandmap-wrap { margin-top: 10px; }
-.bandmap-title { font-size: 11px; color: var(--fg-muted); margin-bottom: 3px; }
-.bandmap-wrap svg.chart { height: 156px; }
+.bandmap-title { font-size: 11px; color: var(--fg-muted); cursor: pointer; }
+.bandmap-wrap[open] .bandmap-title { margin-bottom: 3px; }
+.bandmap-wrap svg.chart { height: 156px; margin-top: 6px; }
 .pure-chart-wrap { position: relative; margin-top: 10px; }
 .pure-chart-wrap svg.chart { height: 380px; cursor: grab; background: #fff; border: 1px solid var(--border); border-radius: 6px; }
 .pure-chart-wrap svg.chart:active { cursor: grabbing; }
@@ -315,13 +316,13 @@ svg.chart .zero-line { stroke: var(--fg-faint); stroke-width: 1; }
     <div class="tab-page" id="page-purespectra">
       <div class="pure-species-panel" id="pureSpeciesPanel"></div>
 
-      <div class="bandmap-wrap">
-        <div class="bandmap-title">
-          Where the real target gases are expected to absorb (literature), across the AvaSpec's full
-          200&ndash;871.5&nbsp;nm range. Ranges are provisional.
-        </div>
+      <details class="bandmap-wrap">
+        <summary class="bandmap-title">
+          Show literature reference bands (where the target gases are expected to absorb,
+          across the AvaSpec's full 200&ndash;871.5&nbsp;nm range -- provisional)
+        </summary>
         <svg class="chart bandmap-chart" id="chart-bandmap" viewBox="0 0 820 156"></svg>
-      </div>
+      </details>
 
       <div class="pure-chart-wrap">
         <svg class="chart" id="chart-pure" viewBox="0 0 820 380"></svg>
@@ -870,10 +871,11 @@ svg.chart .zero-line { stroke: var(--fg-faint); stroke-width: 1; }
   }
 
   // ---------------- literature reference band map + pure-spectra tab ----------------
-  // Static reference, not data from any run: where CLAUDE.md's four target species (NOx/NO2,
-  // SOx/SO2, O2, H2O) are reported in the literature to absorb, across the AvaSpec's full
-  // 200-871.5 nm range. PROVISIONAL -- see docs/huellas-absorcion-no2-so2-h2o.md for the full
-  // citation table and open caveats (PDFs not all read yet).
+  // Static reference, not data from any run: where CLAUDE.md's target species (NOx/NO2,
+  // SOx/SO2, H2O -- O2 excluded, not part of the ARPA-E deliverable scope) are reported in the
+  // literature to absorb, across the AvaSpec's full 200-871.5 nm range. PROVISIONAL -- see
+  // docs/huellas-absorcion-no2-so2-h2o.md for the full citation table and open caveats (PDFs not
+  // all read yet).
   var AVASPEC_RANGE_NM = [200, 871.5];
   var LITERATURE_BANDS = [
     {
@@ -887,11 +889,6 @@ svg.chart .zero-line { stroke: var(--fg-faint); stroke-width: 1; }
       citation: "Vandaele, Hermans & Fally 2009 pt. II (227-345 nm, strong); Hermans, Vandaele & Fally 2009 pt. I (345-420 nm, weaker); one continuous measured run 227.275-416.658 nm"
     },
     {
-      key: "o2", label: "O2", range: "205–245, 627–634, 682–694, 759–772 nm", color: "--species-o2", defaultPpm: 2000,
-      bands: [[205, 245, 0.22], [627, 634, 0.3], [682, 694, 0.45], [759, 772, 0.65]],
-      citation: "Herzberg continuum (Cheung/Jenouvrier/JPL-2010); gamma band ~630 nm is mostly the collisional O2-O2 (O4) complex (Naus & Ubachs 1999) -- scales as [O2]^2, likely undetectable as a CO2 trace gas even though it shows in atmospheric air; B-band ~688 nm, A-band ~760 nm (satellite remote-sensing literature). No PDFs read yet"
-    },
-    {
       key: "h2o", label: "H2O", range: "720–730, ~820 nm (weak)", color: "--species-h2o", defaultPpm: 150,
       bands: [[720, 730, 0.4], [818, 822, 0.4]],
       citation: "720-730 nm is a measured range; ~820 nm is a single reported wavelength, not a range (Giver et al.; Belmiloud et al., +10-15% intensity vs. HITRAN). The strong 940/1130/1370/1450 nm bands fall outside the AvaSpec, inside the PDA10CS-EC's 900-1700 nm range instead"
@@ -899,7 +896,7 @@ svg.chart .zero-line { stroke: var(--fg-faint); stroke-width: 1; }
   ];
   // Only so the illustrative curves respond differently to temperature -- made up, not measured.
   // Reused by the T/P calibration tab's curve/grid too, so both tabs agree on the same 4 species.
-  var PURE_T_SENSITIVITY = { nox: 0.0019, sox: 0.0026, o2: 0.0008, h2o: 0.0041 };
+  var PURE_T_SENSITIVITY = { nox: 0.0019, sox: 0.0026, h2o: 0.0041 };
 
   function renderBandMap(run) {
     var svg = d3.select("#chart-bandmap");
@@ -1023,16 +1020,22 @@ svg.chart .zero-line { stroke: var(--fg-faint); stroke-width: 1; }
         var selected = st.fileName === run.file_name ? " selected" : "";
         return '<option value="' + run.file_name + '"' + selected + ">" + run.file_name + " — " + run.label + "</option>";
       }).join("");
+      // The ppm/T/P/scale cells only exist once a file is actually loaded -- before that there is
+      // no real reading to show or edit, so the row stays just a name + Browse control (four empty
+      // cells keep the grid columns aligned with loaded rows below/above).
+      var valueCells = st.loaded
+        ? '<span class="field-wrap">ppm<input class="native-input" type="number" min="0" step="10" value="' + st.ppm + '" data-field="ppm" data-sp="' + sp.key + '"></span>' +
+          '<span class="field-wrap">temp.<input class="native-input" type="number" step="1" min="250" max="330" value="' + st.t + '" data-field="t" data-sp="' + sp.key + '"></span>' +
+          '<span class="field-wrap">press.<input class="native-input" type="number" step="0.1" min="0.1" max="2" title="Capped at 2 bar: the real pipeline\'s ideal-gas model refuses anything higher until the CO2 equation of state is implemented (CLAUDE.md)" value="' + st.p + '" data-field="p" data-sp="' + sp.key + '"></span>' +
+          '<span class="scale-readout" id="scale-' + sp.key + '">×' + pureScaleFactor(sp.key).toFixed(2) + '</span>'
+        : '<span></span><span></span><span></span><span></span>';
       row.innerHTML =
         '<span class="swatch-dot" style="background:' + cssVar(sp.color) + '"></span>' +
         '<span><span class="sp-name">' + sp.label + '</span><span class="sp-range">' + sp.range + '</span></span>' +
         '<span class="sp-browse-wrap">' +
           '<select class="native-input' + (st.loaded ? " loaded" : "") + '" data-browse-for="' + sp.key + '" title="Pick the AvaSoft export captured with only ' + sp.label + ' in the chamber">' + options + '</select>' +
         '</span>' +
-        '<span class="field-wrap">ppm<input class="native-input" type="number" min="0" step="10" value="' + st.ppm + '" data-field="ppm" data-sp="' + sp.key + '"></span>' +
-        '<span class="field-wrap">temp.<input class="native-input" type="number" step="1" min="250" max="330" value="' + st.t + '" data-field="t" data-sp="' + sp.key + '"></span>' +
-        '<span class="field-wrap">press.<input class="native-input" type="number" step="0.1" min="0.1" max="2" title="Capped at 2 bar: the real pipeline\'s ideal-gas model refuses anything higher until the CO2 equation of state is implemented (CLAUDE.md)" value="' + st.p + '" data-field="p" data-sp="' + sp.key + '"></span>' +
-        '<span class="scale-readout" id="scale-' + sp.key + '">×' + pureScaleFactor(sp.key).toFixed(2) + '</span>';
+        valueCells;
       panel.appendChild(row);
     });
 
